@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>慣性と重力のせめぎ合い</title>
+    <style>
+        body { text-align: center; font-family: sans-serif; background-color: #111; color: #fff; margin: 0; padding: 20px; }
+        canvas { background-color: #000; border: 1px solid #555; border-radius: 5px; box-shadow: 0 0 10px rgba(255,255,255,0.1); margin-top: 10px; }
+        .controls { margin-top: 15px; padding: 15px; background: #222; border-radius: 8px; display: inline-block; }
+        button, input { margin: 0 10px; padding: 10px 15px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; }
+        input[type=range] { vertical-align: middle; cursor: pointer; }
+        #resetBtn { background-color: #3498db; color: white; font-weight: bold; }
+        .legend { margin-top: 10px; font-size: 14px; }
+        .legend span { display: inline-block; margin: 0 10px; }
+        .color-box { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+    <h2>月はなぜ落ちてこない？（慣性と重力）</h2>
+    <div class="controls">
+        <label for="gravityRange">重力の強さ: <span id="gravityVal">1.0</span>倍</label>
+        <input type="range" id="gravityRange" min="0" max="2" step="0.1" value="1">
+        <button id="resetBtn" onclick="init()">リセット</button>
+    </div>
+    <div class="legend">
+        <span><div class="color-box" style="background-color: #3498db;"></div>進行方向（速度）</span>
+        <span><div class="color-box" style="background-color: #e74c3c;"></div>地球が引く力（万有引力）</span>
+        <span><div style="display: inline-block; width: 20px; border-bottom: 2px dashed rgba(255, 255, 255, 0.5); vertical-align: middle; margin-right: 5px;"></div>もし重力がなかったら進む「まっすぐな道」</span>
+    </div>
+    <canvas id="simCanvas" width="700" height="700"></canvas>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const gravityRange = document.getElementById('gravityRange');
+        const gravityVal = document.getElementById('gravityVal');
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const earthRadius = 35;
+        const moonRadius = 12;
+        const BASE_G_M = 2500; // 基準となる万有引力定数×地球質量
+        const ORBIT_RADIUS = 220; // 基準となる円軌道半径
+
+        let moon = {};
+        let animationId;
+        let path = [];
+        let gravityMultiplier = 1.0;
+
+        // 重力スライダーのイベントリスナー
+        gravityRange.addEventListener('input', (e) => {
+            gravityMultiplier = parseFloat(e.target.value);
+            gravityVal.textContent = gravityMultiplier.toFixed(1);
+        });
+
+        function init() {
+            cancelAnimationFrame(animationId);
+            
+            // スライダーを初期値に戻す（オプション）
+            // gravityRange.value = 1;
+            // gravityMultiplier = 1.0;
+            // gravityVal.textContent = "1.0";
+
+            path = [];
+            // 月の初期配置（地球の真右、真上向きの速度）
+            moon = {
+                x: cx + ORBIT_RADIUS,
+                y: cy,
+                vx: 0,
+                vy: -Math.sqrt(BASE_G_M / ORBIT_RADIUS) // 基準状態で円軌道になる初速度 v = sqrt(GM/r)
+            };
+            loop();
+        }
+
+        // 矢印を描画する関数（ベクトル表示用）
+        function drawArrow(fromX, fromY, toX, toY, color, width=3) {
+            const headlen = 10;
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.stroke();
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 地球の描画
+            ctx.beginPath();
+            ctx.arc(cx, cy, earthRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e90ff';
+            ctx.fill();
+            
+            // 距離と角度の計算
+            const dx = cx - moon.x;
+            const dy = cy - moon.y;
+            const distSq = dx*dx + dy*dy;
+            const dist = Math.sqrt(distSq);
+
+            // 物理演算（重力がかかっている状態）
+            // 万有引力による加速度 (a = GM / r^2)
+            const a = (BASE_G_M * gravityMultiplier) / distSq;
+            // 引力が働く場合のみ加速度を計算
+            if (dist > 0) {
+                moon.vx += a * (dx / dist);
+                moon.vy += a * (dy / dist);
+            }
+
+            // 新しい位置を計算
+            const nextX = moon.x + moon.vx;
+            const nextY = moon.y + moon.vy;
+
+            // --- ★ここがポイント：「もし重力がなかったら」の仮想直線（点線）を描画 ---
+            // 現在の速度のまま、次の瞬間（例えば50ステップ分）進むはずだった道を計算
+            const virtualPathLength = 100;
+            ctx.beginPath();
+            ctx.setLineDash([5, 5]); // 点線にする
+            ctx.moveTo(moon.x, moon.y);
+            // 速度ベクトルをそのまま伸ばした直線
+            const vMag = Math.sqrt(moon.vx*moon.vx + moon.vy*moon.vy);
+            if (vMag > 0) {
+                const normVx = moon.vx / vMag;
+                const normVy = moon.vy / vMag;
+                ctx.lineTo(moon.x + normVx * virtualPathLength, moon.y + normVy * virtualPathLength);
+            }
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]); // 実線に戻す
+            // --------------------------------------------------------------------------
+
+            moon.x = nextX;
+            moon.y = nextY;
+
+            // 軌跡の保存と描画
+            path.push({x: moon.x, y: moon.y});
+            if (path.length > 500) path.shift(); // 軌跡が長くなりすぎないように調整
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            path.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            });
+            ctx.stroke();
+
+            // 月の描画
+            ctx.beginPath();
+            ctx.arc(moon.x, moon.y, moonRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#f1c40f';
+            ctx.fill();
+
+            // 速度ベクトル（青矢印）の描画（慣性の方向）
+            drawArrow(moon.x, moon.y, moon.x + moon.vx * 20, moon.y + moon.vy * 20, '#3498db', 4);
+
+            // 引力ベクトル（赤矢印）の描画（落ちる方向）
+            if (gravityMultiplier > 0) {
+                const forceMagnitude = 50 * gravityMultiplier; // 表示用の長さ、重力の強さに比例させる
+                drawArrow(moon.x, moon.y, moon.x + (dx / dist) * forceMagnitude, moon.y + (dy / dist) * forceMagnitude, '#e74c3c', 4);
+            }
+
+            // 画面外に出すぎたり地球に衝突したりしたらリセット（または停止）
+            if (dist < earthRadius + moonRadius || moon.x < -200 || moon.x > canvas.width + 200 || moon.y < -200 || moon.y > canvas.height + 200) {
+                // 衝突または画面外で停止。授業ではリセットボタンを押させる
+                return; 
+            }
+
+            animationId = requestAnimationFrame(loop);
+        }
+
+        init();
+    </script>
+</body>
+</html>
