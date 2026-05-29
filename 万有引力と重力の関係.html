@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重力の成り立ちシミュレーション（ダーク・スマホ対応版）</title>
+    <style>
+        /* ダークテーマのカラー設定 */
+        :root {
+            --bg-main: #121212;
+            --bg-panel: #1e1e1e;
+            --bg-controls: #2c2c2c;
+            --bg-canvas: #181818;
+            --text-main: #e0e0e0;
+            --text-muted: #aaaaaa;
+            --border-color: #444444;
+            --color-fg: #40c4ff; /* 万有引力 (ライトブルー) */
+            --color-fc: #ff5252; /* 遠心力 (ライトレッド) */
+            --color-g: #69f0ae;  /* 重力 (ライトグリーン) */
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background: var(--bg-panel);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            max-width: 800px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 1.3rem;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+            background: var(--bg-controls);
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        /* スマホ向け（縦並び）からPC向け（横並び）へのレスポンシブ設定 */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 8px;
+        }
+        .control-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.95rem;
+        }
+        input[type="range"] {
+            width: 100%;
+            margin: 0;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+        
+        .toggles {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 5px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+        .toggles label {
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95rem;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--color-g);
+        }
+
+        /* PC画面以上の幅がある場合のレイアウト */
+        @media (min-width: 600px) {
+            h1 { font-size: 1.5rem; }
+            .control-group {
+                flex-direction: row;
+                align-items: center;
+            }
+            .control-group label {
+                min-width: 280px;
+            }
+            .toggles {
+                flex-direction: row;
+                justify-content: center;
+                gap: 30px;
+            }
+        }
+
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+            position: relative;
+            width: 100%;
+        }
+        /* キャンバスをレスポンシブに縮小させる */
+        canvas {
+            width: 100%;
+            max-width: 500px;
+            height: auto;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-canvas);
+            border-radius: 8px;
+            display: block;
+        }
+
+        .legend {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            gap: 10px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        .legend span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .color-box {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+        .description {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 15px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>重力 ＝ 万有引力 ＋ 遠心力</h1>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label for="latitude">
+                <span>緯度（北極〜赤道）:</span>
+                <span><span id="latValue">45</span>°</span>
+            </label>
+            <input type="range" id="latitude" min="0" max="90" value="45">
+        </div>
+        <div class="control-group">
+            <label for="multiplier">
+                <span>表示上の遠心力:</span>
+                <span>万有引力の <span id="multValue">0.200</span> 倍</span>
+            </label>
+            <input type="range" id="multiplier" min="0.003" max="0.500" step="0.001" value="0.200">
+        </div>
+        
+        <div class="toggles">
+            <label style="color: var(--color-g);">
+                <input type="checkbox" id="showPlumb" checked> 鉛直線を表示
+            </label>
+            <label style="color: var(--color-fg);">
+                <input type="checkbox" id="showVertical"> 垂直線を表示
+            </label>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="simCanvas" width="500" height="500"></canvas>
+    </div>
+
+    <div class="legend">
+        <span><div class="color-box" style="background: var(--color-fg);"></div> 万有引力</span>
+        <span><div class="color-box" style="background: var(--color-fc);"></div> 遠心力</span>
+        <span><div class="color-box" style="background: var(--color-g);"></div> 重力 (合力)</span>
+    </div>
+
+    <div class="description">
+        <p>※ 実際の赤道上での遠心力は<strong>万有引力の約0.003倍（約1/290）</strong>です。スライダーを左端にすると実際の比率になりますが、ズレを確認するために誇張して表示できます。</p>
+        <p>※ <strong>鉛直線</strong>は重力の方向を示す線です。<strong>垂直線</strong>は地表面（球面）と90度に交わる線（地球中心への延長線）です。</p>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI要素の取得
+    const latSlider = document.getElementById('latitude');
+    const multSlider = document.getElementById('multiplier');
+    const latValue = document.getElementById('latValue');
+    const multValue = document.getElementById('multValue');
+    const chkPlumb = document.getElementById('showPlumb');
+    const chkVertical = document.getElementById('showVertical');
+
+    // カラー変数をJS側にも定義
+    const style = getComputedStyle(document.body);
+    const colorFg = style.getPropertyValue('--color-fg').trim();
+    const colorFc = style.getPropertyValue('--color-fc').trim();
+    const colorG = style.getPropertyValue('--color-g').trim();
+
+    // キャンバス論理座標上の地球設定（500x500の空間内）
+    const cx = 60;  // 中心X
+    const cy = 440; // 中心Y
+    const R = 340;  // 半径
+
+    // 矢印描画関数
+    function drawArrow(fromX, fromY, toX, toY, color, width = 2) {
+        const headlen = 10;
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const angle = Math.atan2(dy, dx);
+        
+        ctx.beginPath();
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const latDeg = parseFloat(latSlider.value);
+        const latRad = latDeg * (Math.PI / 180);
+        const multiplier = parseFloat(multSlider.value);
+
+        // --- 基準軸の描画 ---
+        ctx.beginPath();
+        ctx.moveTo(cx, 30); ctx.lineTo(cx, cy + 30); // 自転軸
+        ctx.moveTo(cx - 30, cy); ctx.lineTo(cx + R + 40, cy); // 赤道面
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]); 
+
+        ctx.fillStyle = '#aaa';
+        ctx.font = '13px Arial';
+        ctx.fillText('自転軸 (北極)', cx - 50, 20);
+        ctx.fillText('赤道面', cx + R + 5, cy + 15);
+        ctx.fillText('地球中心', cx - 15, cy + 15);
+
+        // --- 自転を示す矢印 ---
+        const arrowY = 70;
+        const arrowRx = 40;
+        const arrowRy = 12;
+
+        ctx.beginPath();
+        ctx.ellipse(cx, arrowY, arrowRx, arrowRy, 0, Math.PI, 0, true);
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(cx + arrowRx - 5, arrowY + 8);
+        ctx.lineTo(cx + arrowRx, arrowY);
+        ctx.lineTo(cx + arrowRx + 5, arrowY + 8);
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'miter';
+        ctx.stroke();
+        
+        ctx.fillStyle = '#888';
+        ctx.fillText('自転', cx + arrowRx + 8, arrowY + 5);
+
+        // --- 1/4地球の描画 ---
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, -Math.PI / 2, true);
+        ctx.lineTo(cx, cy);
+        ctx.fillStyle = '#102a43'; // ダークテーマ用の地球色
+        ctx.fill();
+        ctx.strokeStyle = '#2962ff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 質点の位置
+        const px = cx + R * Math.cos(latRad);
+        const py = cy - R * Math.sin(latRad);
+
+        ctx.beginPath();
+        ctx.arc(px, py, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+
+        // --- 力のベクトル計算 ---
+        const Fg_mag = 130; // 万有引力のベクトル長（キャンバスに収まるよう調整）
+        const fg_x = -Fg_mag * Math.cos(latRad);
+        const fg_y = Fg_mag * Math.sin(latRad);
+
+        const display_Fc_mag = Fg_mag * multiplier * Math.cos(latRad); 
+        const fc_x = display_Fc_mag;
+        const fc_y = 0; 
+
+        const g_x = fg_x + fc_x;
+        const g_y = fg_y + fc_y;
+
+        // 平行四辺形の補助線
+        ctx.beginPath();
+        ctx.moveTo(px + fg_x, py + fg_y);
+        ctx.lineTo(px + g_x, py + g_y);
+        ctx.moveTo(px + fc_x, py + fc_y);
+        ctx.lineTo(px + g_x, py + g_y);
+        ctx.strokeStyle = '#666';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 各ベクトルの描画
+        drawArrow(px, py, px + fg_x, py + fg_y, colorFg, 2); // 万有引力
+        drawArrow(px, py, px + fc_x, py + fc_y, colorFc, 2); // 遠心力
+        drawArrow(px, py, px + g_x, py + g_y, colorG, 3);   // 重力
+
+        // --- 補助線の表示切り替え ---
+        const lineLength = 100; 
+
+        // 1. 垂直線
+        if (chkVertical.checked) {
+            const fg_len = Math.sqrt(fg_x * fg_x + fg_y * fg_y);
+            const v_x = -(fg_x / fg_len) * lineLength;
+            const v_y = -(fg_y / fg_len) * lineLength;
+
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(px + v_x, py + v_y);
+            ctx.strokeStyle = colorFg;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = colorFg;
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('垂直線', px + v_x - 10, py + v_y - 10);
+        }
+
+        // 2. 鉛直線
+        if (chkPlumb.checked) {
+            const g_len = Math.sqrt(g_x * g_x + g_y * g_y);
+            const p_x = -(g_x / g_len) * lineLength;
+            const p_y = -(g_y / g_len) * lineLength;
+
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(px + p_x, py + p_y);
+            ctx.strokeStyle = colorG;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = colorG;
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('鉛直線', px + p_x - 10, py + p_y - 10);
+        }
+    }
+
+    // イベントリスナーの登録
+    latSlider.addEventListener('input', (e) => {
+        latValue.textContent = e.target.value;
+        draw();
+    });
+
+    multSlider.addEventListener('input', (e) => {
+        multValue.textContent = parseFloat(e.target.value).toFixed(3);
+        draw();
+    });
+
+    chkPlumb.addEventListener('change', draw);
+    chkVertical.addEventListener('change', draw);
+
+    // ウィンドウリサイズ時にも再描画（念のため）
+    window.addEventListener('resize', draw);
+
+    // 初期描画
+    draw();
+</script>
+
+</body>
+</html>
