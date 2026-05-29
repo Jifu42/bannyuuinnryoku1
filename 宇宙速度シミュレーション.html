@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>宇宙速度シミュレーター Pro</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #020617;
+            color: #f8fafc;
+            margin: 0;
+            padding: 15px;
+            overflow: hidden; 
+            height: 100vh;
+            box-sizing: border-box;
+            touch-action: none; 
+        }
+        h2 { margin: 0 0 10px 0; color: #38bdf8; font-size: 1.4rem; text-align: center; width: 100%;}
+        
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+            max-width: 1100px;
+            height: calc(100% - 40px);
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            background-color: #000;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(56, 189, 248, 0.15);
+            flex-grow: 1;
+            overflow: hidden;
+            touch-action: none; 
+        }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+        .zoom-controls {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 10;
+        }
+        .zoom-btn {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid #334155;
+            color: #38bdf8;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            backdrop-filter: blur(4px);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .zoom-btn:hover, .zoom-btn:active { background: #1e293b; color: #7dd3fc; border-color: #7dd3fc;}
+        .zoom-btn.zoom-reset { font-size: 0.85rem; height: 32px;}
+
+        .hud {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(15, 23, 42, 0.85);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            pointer-events: none;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        }
+        .hud-val { color: #38bdf8; font-weight: bold; font-family: monospace;}
+        
+        .legend {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(15, 23, 42, 0.85);
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            font-size: 0.75rem;
+            pointer-events: none;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        }
+        .leg-item { display: flex; align-items: center; gap: 6px; margin-bottom: 3px;}
+        .leg-color { width: 16px; height: 3px; border-radius: 2px;}
+
+        .controls {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 20;
+        }
+        
+        .controls-top {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .controls-bottom {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            padding-top: 12px;
+            border-top: 1px solid #334155;
+            flex-wrap: nowrap;
+        }
+
+        .slider-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #0f172a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            flex-grow: 1;
+        }
+        .slider-track-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .slider-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            padding: 0 12px; 
+        }
+        .value-display-area {
+            display: flex;
+            align-items: baseline;
+            min-width: 90px;
+            justify-content: flex-end;
+        }
+        #veloDisplay { font-weight: bold; color: #38bdf8; font-size: 1.3rem; font-family: monospace;}
+        
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+            height: 10px;
+            border-radius: 5px;
+            background: #334155;
+            outline: none;
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #38bdf8;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+        input[type="range"]::-webkit-slider-thumb:active { background: #7dd3fc; transform: scale(1.1); }
+
+        button {
+            padding: 10px 15px;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background: #334155;
+            color: #e2e8f0;
+            font-weight: bold;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+            white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
+        }
+        button:active { background: #475569; transform: scale(0.98); }
+        button.active-v { background: #0369a1; color: white; box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);}
+        button.reset { background: #7f1d1d; color: #fecaca;}
+        button.reset:active { background: #b91c1c; }
+
+        .media-btn {
+            background: #0f172a;
+            border: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex: 1;
+        }
+        .media-btn.active-media {
+            background: #0ea5e9;
+            color: #fff;
+            border-color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 10px;
+            background: #0f172a;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #f8fafc;
+        }
+
+        .disclaimer {
+            width: 100%;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+        .disclaimer span {
+            color: #94a3b8;
+        }
+
+        @media (max-width: 768px) {
+            h2 { font-size: 1.2rem; }
+            .controls-top { flex-direction: column; gap: 10px; }
+            .slider-section { flex-direction: column; align-items: stretch; padding: 10px; width: 100%; box-sizing: border-box;}
+            .value-display-area { justify-content: center; margin-top: 5px; }
+            
+            .controls-top > div:last-child { display: flex; width: 100%; gap: 8px; }
+            .controls-top > div:last-child button { flex: 1; padding: 12px 5px; font-size: 0.8rem;}
+            
+            .controls-bottom { flex-wrap: wrap; }
+            .media-btn { flex: 1 1 20%; padding: 12px 5px; font-size: 0.8rem; }
+            
+            .speed-control { margin-left: 0; width: 100%; justify-content: space-between; padding: 12px; box-sizing: border-box;}
+            .speed-control input { width: 55%; }
+            
+            .hud { font-size: 0.75rem; padding: 6px 8px; top: 5px; right: 5px; }
+            .legend { font-size: 0.65rem; padding: 5px 8px; bottom: 5px; right: 5px; }
+            .zoom-controls { transform: scale(0.9); transform-origin: top left; left: 5px; top: 5px;}
+        }
+
+    </style>
+</head>
+<body>
+
+    <h2>宇宙速度シミュレーター Pro</h2>
+    
+    <div class="main-container">
+        <div class="canvas-wrapper">
+            
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="changeZoom(1.25)" title="拡大">＋</button>
+                <button class="zoom-btn" onclick="changeZoom(0.8)" title="縮小">－</button>
+                <button class="zoom-btn zoom-reset" onclick="resetZoom()">1.0x</button>
+            </div>
+
+            <canvas id="simCanvas"></canvas>
+            
+            <div class="hud">
+                <div>初速度: <span id="hudV0" class="hud-val">--</span> km/s</div>
+                <div>状態: <span id="hudStatus" class="hud-val">待機中</span></div>
+                <div style="border-top: 1px solid #334155; margin-top: 5px; padding-top: 5px;">
+                    倍率: <span id="hudZoom" class="hud-val">1.00x</span>
+                </div>
+            </div>
+
+            <div class="legend">
+                <div class="leg-item"><div class="leg-color" style="background:#ef4444"></div>弾道 (落下)</div>
+                <div class="leg-item"><div class="leg-color" style="background:#22d3ee"></div>周回軌道</div>
+                <div class="leg-item"><div class="leg-color" style="background:#fbbf24"></div>脱出軌道</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="controls-top">
+                <div class="slider-section">
+                    <div class="slider-track-area">
+                        <div class="slider-labels">
+                            <span>5.0</span>
+                            <span style="transform: translateX(-15%);">7.91 (第1)</span>
+                            <span style="transform: translateX(-10%);">11.20 (第2)</span>
+                            <span>14.0</span>
+                        </div>
+                        <input type="range" id="veloSlider" min="5.00" max="14.00" step="0.01" value="7.91">
+                    </div>
+                    <div class="value-display-area">
+                        <span id="veloDisplay">7.91</span> <span style="color:#94a3b8; font-size:0.8rem; margin-left:4px;">km/s</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <button id="btnV1" onclick="setV(7.91)">第1宇宙速度</button>
+                    <button id="btnV2" onclick="setV(11.20)">第2宇宙速度</button>
+                    <button class="reset" onclick="resetSim()">リセット</button>
+                </div>
+            </div>
+            
+            <div class="controls-bottom">
+                <button class="media-btn" id="btnRewind" onclick="setPlayMode('rewind')">⏪ 巻戻</button>
+                <button class="media-btn" id="btnPause" onclick="setPlayMode('pause')">⏸ 停止</button>
+                <button class="media-btn active-media" id="btnPlay" onclick="setPlayMode('play')">▶ 再生</button>
+                <button class="media-btn" id="btnFF" onclick="setPlayMode('ff')">⏩ 早送</button>
+                
+                <div class="speed-control">
+                    早送りのスピード: <span id="speedDisplay" style="color:#38bdf8; font-weight:bold; width:55px; font-family:monospace; text-align:right;">3x</span>
+                    <input type="range" id="speedSlider" min="2" max="2000" step="1" value="3">
+                </div>
+            </div>
+            
+            <div class="disclaimer">
+                ※注意: 教科書等では<span>第一宇宙速度を約7.91 km/s</span>、<span>第二宇宙速度を約11.2 km/s</span>と表記しますが、本シミュレーターは厳密な物理法則（第二 = 第一の √2 倍）で計算しているため、実際の脱出境界値は <span>約11.186 km/s</span> となります。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const veloSlider = document.getElementById('veloSlider');
+        const veloDisplay = document.getElementById('veloDisplay');
+        const hudV0 = document.getElementById('hudV0');
+        const hudStatus = document.getElementById('hudStatus');
+        const hudZoom = document.getElementById('hudZoom');
+        const btnV1 = document.getElementById('btnV1');
+        const btnV2 = document.getElementById('btnV2');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedDisplay = document.getElementById('speedDisplay');
+
+        let R_px; 
+        const v1_kms = 7.91; 
+        const exact_v2_kms = v1_kms * Math.sqrt(2); 
+        let GM; 
+        
+        let centerX, centerY;
+        let x, y, vx, vy;
+        let trail = [];
+        let animationId;
+        let stars = [];
+        
+        let orbitTypeStr = "";
+        let currentMode = 'pause'; 
+        let timeScale = 0; 
+        let stepCounter = 0;
+        let hasCrashed = false;
+        let hasEscaped = false;
+        let zoomLevel = 1.0;
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            centerX = canvas.clientWidth / 2;
+            centerY = canvas.clientHeight / 2;
+            
+            R_px = Math.min(canvas.clientWidth, canvas.clientHeight) * 0.12; 
+            if(R_px < 30) R_px = 30; 
+
+            const targetVisualV1 = 7.0; 
+            GM = Math.pow(targetVisualV1, 2) * R_px;
+
+            if (timeScale === 0) draw(); 
+        }
+
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (e.deltaY < 0) changeZoom(1.1); 
+            else changeZoom(1 / 1.1); 
+        }, { passive: false });
+
+        function changeZoom(factor) {
+            zoomLevel *= factor;
+            zoomLevel = Math.max(0.0001, Math.min(zoomLevel, 50.0)); 
+            if(zoomLevel < 0.01) {
+                hudZoom.textContent = zoomLevel.toFixed(4) + "x";
+            } else {
+                hudZoom.textContent = zoomLevel.toFixed(2) + "x";
+            }
+            if (timeScale === 0) draw(); 
+        }
+
+        function resetZoom() {
+            zoomLevel = 1.0;
+            hudZoom.textContent = "1.00x";
+            if (timeScale === 0) draw();
+        }
+
+        function generateStars() {
+            stars = [];
+            for(let i=0; i<250; i++) {
+                stars.push({
+                    x: Math.random() * 4000 - 2000, 
+                    y: Math.random() * 4000 - 2000,
+                    size: Math.random() * 1.5,
+                    opacity: Math.random() * 0.8 + 0.2
+                });
+            }
+        }
+
+        function kmsToInternal(kms) {
+            const internalV1 = Math.sqrt(GM / R_px);
+            return kms * (internalV1 / v1_kms);
+        }
+
+        veloSlider.addEventListener('input', (e) => {
+            const v = parseFloat(e.target.value).toFixed(2);
+            veloDisplay.textContent = v;
+            updateButtonState(parseFloat(v));
+        });
+
+        veloSlider.addEventListener('change', (e) => {
+            launch();
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            const spd = e.target.value;
+            speedDisplay.textContent = spd + "x";
+            if (currentMode === 'ff' || currentMode === 'rewind') {
+                setPlayMode(currentMode);
+            }
+        });
+
+        function updateButtonState(v) {
+            btnV1.classList.remove('active-v');
+            btnV2.classList.remove('active-v');
+            if(Math.abs(v - 7.91) < 0.001) btnV1.classList.add('active-v');
+            if(Math.abs(v - 11.20) < 0.001) btnV2.classList.add('active-v');
+        }
+
+        function setPlayMode(mode) {
+            if (document.getElementById('hudV0').textContent === '--') {
+                if (mode === 'pause') return; 
+                launch();
+                
+                if (mode !== 'play') {
+                    currentMode = mode;
+                    const spd = parseInt(speedSlider.value);
+                    timeScale = (mode === 'ff') ? spd : -spd;
+                    
+                    document.querySelectorAll('.media-btn').forEach(b => b.classList.remove('active-media'));
+                    if (mode === 'ff') document.getElementById('btnFF').classList.add('active-media');
+                    if (mode === 'rewind') document.getElementById('btnRewind').classList.add('active-media');
+                    updateHUDStatus();
+                }
+                return; 
+            }
+
+            currentMode = mode;
+            const spd = parseInt(speedSlider.value);
+            
+            document.querySelectorAll('.media-btn').forEach(b => b.classList.remove('active-media'));
+            
+            if (mode === 'pause') {
+                timeScale = 0;
+                document.getElementById('btnPause').classList.add('active-media');
+            } else if (mode === 'play') {
+                timeScale = 1;
+                document.getElementById('btnPlay').classList.add('active-media');
+            } else if (mode === 'ff') {
+                timeScale = spd;
+                document.getElementById('btnFF').classList.add('active-media');
+            } else if (mode === 'rewind') {
+                timeScale = -spd;
+                document.getElementById('btnRewind').classList.add('active-media');
+            }
+            updateHUDStatus();
+        }
+
+        function updateHUDStatus() {
+            if (hasCrashed) {
+                hudStatus.textContent = "💥 落下";
+                hudStatus.style.color = "#ef4444";
+            } else if (hasEscaped) {
+                hudStatus.textContent = "✨ 脱出";
+                hudStatus.style.color = "#fbbf24";
+            } else if (currentMode === 'pause') {
+                hudStatus.textContent = "⏸ 停止中";
+                hudStatus.style.color = "#94a3b8";
+            } else if (currentMode === 'rewind') {
+                hudStatus.textContent = "⏪ 戻(" + Math.abs(timeScale) + "x)";
+                hudStatus.style.color = "#a855f7";
+            } else if (currentMode === 'ff') {
+                hudStatus.textContent = "⏩ 進(" + timeScale + "x)";
+                hudStatus.style.color = "#3b82f6";
+            } else {
+                hudStatus.textContent = orbitTypeStr || "待機中";
+                const v0 = parseFloat(veloSlider.value);
+                if (!orbitTypeStr) hudStatus.style.color = "#94a3b8";
+                else if(v0 < v1_kms) hudStatus.style.color = "#ef4444";
+                else if (v0 < exact_v2_kms) hudStatus.style.color = "#22d3ee"; 
+                else hudStatus.style.color = "#fbbf24";
+            }
+        }
+
+        function setV(v) {
+            veloSlider.value = v.toFixed(2);
+            veloDisplay.textContent = v.toFixed(2);
+            updateButtonState(v);
+            launch(); 
+        }
+
+        function draw() {
+            ctx.fillStyle = '#000'; 
+            ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+            ctx.save();
+            ctx.translate(centerX, centerY); 
+            for(let star of stars) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.scale(zoomLevel, zoomLevel);
+
+            let glow = ctx.createRadialGradient(0, 0, R_px, 0, 0, R_px * 1.4);
+            glow.addColorStop(0, 'rgba(56, 189, 248, 0.3)');
+            glow.addColorStop(1, 'rgba(56, 189, 248, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(0, 0, R_px * 1.4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(0, 0, R_px, 0, Math.PI * 2);
+            let gradient = ctx.createRadialGradient(-R_px*0.3, -R_px*0.3, R_px*0.2, 0, 0, R_px);
+            gradient.addColorStop(0, '#7dd3fc'); 
+            gradient.addColorStop(0.5, '#0ea5e9'); 
+            gradient.addColorStop(1, '#075985'); 
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            ctx.save(); 
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.5)'; 
+            ctx.beginPath();
+            ctx.arc(0, 0, R_px, 0, Math.PI * 2);
+            ctx.clip(); 
+            ctx.beginPath();
+            ctx.ellipse(-R_px*0.4, R_px*0.2, R_px*0.6, R_px*0.3, 0.5, 0, Math.PI*2);
+            ctx.ellipse(R_px*0.5, -R_px*0.3, R_px*0.4, R_px*0.5, -0.5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore(); 
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1 / zoomLevel; 
+            ctx.beginPath();
+            ctx.arc(0, 0, R_px, 0, Math.PI * 2);
+            ctx.stroke();
+
+            const v0_kms = parseFloat(veloSlider.value);
+            let orbitColor = '#22d3ee'; 
+            if (v0_kms < v1_kms) orbitColor = '#ef4444'; 
+            else if (v0_kms >= exact_v2_kms) orbitColor = '#fbbf24'; 
+
+            if (trail.length > 1) {
+                ctx.strokeStyle = orbitColor;
+                ctx.lineWidth = 2.5 / zoomLevel; 
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(trail[0].x, trail[0].y);
+                for (let i = 1; i < trail.length; i++) {
+                    ctx.lineTo(trail[i].x, trail[i].y);
+                }
+                ctx.stroke();
+                
+                ctx.globalAlpha = 0.4;
+                ctx.lineWidth = 8 / zoomLevel;
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            }
+
+            if (stepCounter > 0 || trail.length > 0) {
+                ctx.shadowBlur = 20 / zoomLevel;
+                ctx.shadowColor = orbitColor;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 6 / zoomLevel, 0, Math.PI * 2); 
+                ctx.fillStyle = '#fff'; 
+                ctx.fill();
+                ctx.shadowBlur = 0; 
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 7 / zoomLevel, 0, Math.PI * 2); 
+                ctx.strokeStyle = orbitColor;
+                ctx.lineWidth = 2 / zoomLevel;
+                ctx.stroke();
+            }
+
+            ctx.restore(); 
+        }
+
+        function launch() {
+            cancelAnimationFrame(animationId);
+            const v0_in_kms = parseFloat(veloSlider.value);
+            
+            hudV0.textContent = v0_in_kms.toFixed(2);
+            
+            x = 0;
+            y = -R_px; 
+            vx = kmsToInternal(v0_in_kms); 
+            vy = 0; 
+            
+            trail = []; 
+            stepCounter = 0;
+            hasCrashed = false;
+            hasEscaped = false;
+            
+            if(v0_in_kms < v1_kms) orbitTypeStr = "弾道軌道";
+            else if (v0_in_kms < exact_v2_kms) orbitTypeStr = "周回軌道"; 
+            else orbitTypeStr = "脱出軌道";
+
+            setPlayMode('play'); 
+            animate();
+        }
+
+        function resetSim() {
+            cancelAnimationFrame(animationId);
+            orbitTypeStr = "";
+            stepCounter = 0;
+            hasCrashed = false;
+            hasEscaped = false;
+            trail = [];
+            hudV0.textContent = "--";
+            
+            veloSlider.value = "7.91";
+            veloDisplay.textContent = "7.91";
+            updateButtonState(7.91);
+            
+            setPlayMode('pause'); 
+            if (timeScale === 0) draw(); 
+        }
+
+        function animate() {
+            if (timeScale !== 0) {
+                const dt = 0.01; 
+                const baseSteps = 25; 
+                const steps = baseSteps * Math.abs(timeScale);
+                const dir = Math.sign(timeScale);
+                
+                const crashLimitSq = R_px * R_px * 0.64;
+                const escapeLimitSq = R_px * R_px * 100000000; 
+
+                for (let i = 0; i < steps; i++) {
+                    if (dir > 0) {
+                        if (hasCrashed || hasEscaped) break;
+
+                        const r2 = x*x + y*y;
+
+                        if (r2 < crashLimitSq) { 
+                            hasCrashed = true;
+                            updateHUDStatus();
+                            break;
+                        }
+                        
+                        if (r2 > escapeLimitSq) { 
+                            hasEscaped = true;
+                            updateHUDStatus();
+                            break;
+                        }
+
+                        const inv_r = 1.0 / Math.sqrt(r2);
+                        const acc_over_r = (GM / r2) * inv_r;
+                        
+                        const ax = -x * acc_over_r;
+                        const ay = -y * acc_over_r;
+
+                        vx += ax * dt;
+                        vy += ay * dt;
+                        x += vx * dt;
+                        y += vy * dt;
+
+                        stepCounter++;
+                        
+                        if (stepCounter % 2 === 0) {
+                            const lastPos = trail[trail.length - 1];
+                            const minDistSq = Math.max(1, r2 / 40000); 
+                            const distSq = lastPos ? (x - lastPos.x)**2 + (y - lastPos.y)**2 : Infinity;
+                            
+                            if (distSq > minDistSq) {
+                                trail.push({x, y});
+                            }
+                        }
+                        
+                    } else {
+                        if (stepCounter <= 0) {
+                            setPlayMode('pause'); 
+                            break;
+                        }
+
+                        if (hasCrashed || hasEscaped) {
+                            hasCrashed = false;
+                            hasEscaped = false;
+                            updateHUDStatus();
+                        }
+
+                        x -= vx * dt;
+                        y -= vy * dt;
+
+                        const r2 = x*x + y*y;
+                        const inv_r = 1.0 / Math.sqrt(r2);
+                        const acc_over_r = (GM / r2) * inv_r;
+                        const ax = -x * acc_over_r;
+                        const ay = -y * acc_over_r;
+
+                        vx -= ax * dt;
+                        vy -= ay * dt;
+                        
+                        if (stepCounter % 2 === 0) {
+                            const lastPos = trail[trail.length - 1];
+                            if (lastPos) {
+                                const distSq = (x - lastPos.x)**2 + (y - lastPos.y)**2;
+                                const minDistSq = Math.max(1, r2 / 40000);
+                                if (distSq < minDistSq * 1.2) {
+                                    trail.pop();
+                                }
+                            }
+                        }
+                        stepCounter--;
+                    }
+                }
+                
+                if (trail.length > 10000) {
+                    trail.splice(0, trail.length - 10000);
+                }
+            }
+
+            draw();
+            animationId = requestAnimationFrame(animate);
+        }
+
+        generateStars();
+        resize(); 
+        setPlayMode('pause'); 
+
+    </script>
+</body>
+</html>
