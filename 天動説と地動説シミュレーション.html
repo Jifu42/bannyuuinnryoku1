@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天動説・地動説と火星の逆行シミュレーション</title>
+<style>
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #111;
+    color: #eee;
+    text-align: center;
+    margin: 0;
+    padding: 15px;
+  }
+  h2 {
+    font-size: 1.3em;
+    margin-top: 5px;
+  }
+  .container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+  }
+  .panel {
+    background-color: #222;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    position: relative;
+    width: 100%;
+    max-width: 500px; /* PCでは最大500pxに制限 */
+    box-sizing: border-box;
+  }
+  canvas {
+    background-color: #000;
+    border-radius: 4px;
+    border: 1px solid #333;
+    width: 100%; /* 親要素に合わせて縮小 */
+    height: auto; /* アスペクト比を維持 */
+    display: block;
+  }
+  .controls {
+    background: #333;
+    display: inline-block;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    text-align: left;
+    width: 100%;
+    max-width: 600px;
+    box-sizing: border-box;
+  }
+  .control-group {
+    margin: 10px 0;
+  }
+  label {
+    display: inline-block;
+    margin: 4px 8px;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  button {
+    background-color: #4488ff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+    margin: 5px;
+    touch-action: manipulation; /* スマホでのタップ遅延解消 */
+  }
+  button:hover { background-color: #3377dd; }
+  h3 { margin: 0 0 10px 0; font-size: 1.1em; color: #ccc; text-align: center; }
+  .sky-labels {
+    position: absolute;
+    width: calc(100% - 30px); /* padding分を引く */
+    top: 45px;
+    left: 15px;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    color: #888;
+    font-size: 0.85em;
+    font-weight: bold;
+    box-sizing: border-box;
+  }
+  p {
+    font-size: 0.85em;
+    color: #888;
+    text-align: left;
+    margin-top: 8px;
+    margin-bottom: 0;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+
+  <h2>惑星の逆行現象：軌道モデルと見え方</h2>
+  
+  <div class="controls">
+    <div class="control-group">
+      <strong>モデル：</strong><br>
+      <label><input type="radio" name="model" value="helio" checked> 地動説（太陽中心）</label><br>
+      <label><input type="radio" name="model" value="geo"> 天動説（地球中心・周転円<b>あり</b>）</label><br>
+      <label><input type="radio" name="model" value="geo_none"> 天動説（地球中心・周転円<span style="color:#ff4444;">なし</span>）</label>
+    </div>
+    <hr style="border-color: #555; border-style: solid; border-width: 1px 0 0 0;">
+    <div class="control-group">
+      <strong>表示範囲：</strong>
+      <label><input type="radio" name="scope" value="mars_only" checked> 地球・火星のみ</label>
+      <label><input type="radio" name="scope" value="all"> 太陽系全体</label>
+    </div>
+    <div class="control-group">
+      <strong>表示設定：</strong>
+      <label><input type="checkbox" id="toggleSky" checked> 星空の見え方（下の図）を表示する</label>
+    </div>
+    <div class="control-group" style="text-align: center; margin-top: 15px;">
+      <button id="btnPlayPause">一時停止</button>
+      <button id="btnReset">リセット</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h3>宇宙から見た軌道モデル（反時計回り）</h3>
+      <canvas id="orbitCanvas" width="500" height="500"></canvas>
+    </div>
+
+    <div class="panel" id="skyPanel">
+      <h3>実際の星空の見え方（南の空）</h3>
+      <div class="sky-labels">
+        <span>← 東 (順行)</span>
+        <span>西 (逆行) →</span>
+      </div>
+      <canvas id="skyCanvas" width="500" height="300"></canvas>
+      <p>
+        ※ 背景の星座（天球）に対して火星がどう動くかを示しています。<br>
+        ※ <b>【周転円なし】</b>を選ぶと、火星が一度も逆行せず、ひたすら左（東）へ進むことが分かります。
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const orbitCtx = document.getElementById('orbitCanvas').getContext('2d');
+    const skyCtx = document.getElementById('skyCanvas').getContext('2d');
+    const wOrbit = 500, hOrbit = 500, cx = wOrbit / 2, cy = hOrbit / 2;
+    const wSky = 500, hSky = 300;
+
+    let time = 0;
+    let isPlaying = true;
+    let currentModel = 'helio';
+    let currentScope = 'mars_only';
+    let skyPath = [];
+    let camX = 0;
+
+    const planets = {
+      mercury: { name: '水星', r: 40, w: 0.08, color: '#aaaaaa', zAmp: 5, zFreq: 0.08, phase: 0, zPhase: 0 },
+      venus:   { name: '金星', r: 75, w: 0.05, color: '#ffcc88', zAmp: 8, zFreq: 0.05, phase: 0, zPhase: 0 },
+      earth:   { name: '地球', r: 120, w: 0.03, color: '#4488ff', zAmp: 0, zFreq: 0, phase: -1.2, zPhase: 0 },
+      mars:    { name: '火星', r: 190, w: 0.016, color: '#ff4444', zAmp: 18, zFreq: 0.016, phase: 0, zPhase: 1.5 },
+      jupiter: { name: '木星', r: 240, w: 0.005, color: '#ddaa77', zAmp: 10, zFreq: 0.005, phase: 0.5, zPhase: 0 }
+    };
+
+    document.getElementById('toggleSky').addEventListener('change', (e) => {
+      document.getElementById('skyPanel').style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    document.querySelectorAll('input[name="model"]').forEach(radio => {
+      radio.addEventListener('change', (e) => { currentModel = e.target.value; resetSim(); });
+    });
+    document.querySelectorAll('input[name="scope"]').forEach(radio => {
+      radio.addEventListener('change', (e) => { currentScope = e.target.value; resetSim(); });
+    });
+    document.getElementById('btnPlayPause').addEventListener('click', (e) => {
+      isPlaying = !isPlaying;
+      e.target.innerText = isPlaying ? '一時停止' : '再生';
+    });
+    document.getElementById('btnReset').addEventListener('click', resetSim);
+
+    function resetSim() {
+      time = 0;
+      skyPath = [];
+      skyCtx.clearRect(0, 0, wSky, hSky);
+      orbitCtx.clearRect(0, 0, wOrbit, hOrbit);
+    }
+
+    function draw() {
+      if (isPlaying) time += 1;
+
+      orbitCtx.clearRect(0, 0, wOrbit, hOrbit);
+      let keys = currentScope === 'all' ? Object.keys(planets) : ['earth', 'mars'];
+      
+      let coords = {};
+      for (let key of keys) {
+        let p = planets[key];
+        let theta = p.w * time + p.phase;
+        coords[key] = {
+          x: p.r * Math.cos(theta),
+          y: p.r * Math.sin(theta), 
+          z: p.zAmp * Math.sin(p.zFreq * time + p.zPhase)
+        };
+      }
+
+      let drawCoords = {};
+      
+      if (currentModel === 'helio') {
+        drawCoords['sun'] = { x: cx, y: cy };
+        drawPlanet(cx, cy, 12, '#ffcc00', '太陽');
+        
+        for (let key of keys) {
+          drawCoords[key] = { x: cx + coords[key].x, y: cy - coords[key].y };
+          orbitCtx.beginPath(); orbitCtx.arc(cx, cy, planets[key].r, 0, Math.PI*2);
+          orbitCtx.strokeStyle = '#333'; orbitCtx.stroke();
+        }
+      } else if (currentModel === 'geo') {
+        let ex = coords['earth'].x, ey = coords['earth'].y;
+        drawCoords['earth'] = { x: cx, y: cy };
+        
+        drawCoords['sun'] = { x: cx - ex, y: cy + ey };
+        orbitCtx.beginPath(); orbitCtx.arc(cx, cy, planets['earth'].r, 0, Math.PI*2);
+        orbitCtx.strokeStyle = '#444'; orbitCtx.stroke();
+        drawPlanet(drawCoords['sun'].x, drawCoords['sun'].y, 12, '#ffcc00', '太陽');
+
+        for (let key of keys) {
+          if (key === 'earth') continue;
+          let px = cx + coords[key].x - ex;
+          let py = cy - coords[key].y + ey;
+          drawCoords[key] = { x: px, y: py };
+
+          let p = planets[key];
+          if (p.r > planets['earth'].r) {
+            let deferentX = cx + coords[key].x;
+            let deferentY = cy - coords[key].y;
+            orbitCtx.beginPath(); orbitCtx.arc(cx, cy, p.r, 0, Math.PI*2); orbitCtx.strokeStyle = '#333'; orbitCtx.stroke();
+            orbitCtx.beginPath(); orbitCtx.arc(deferentX, deferentY, planets['earth'].r, 0, Math.PI*2); orbitCtx.strokeStyle = '#555'; orbitCtx.stroke();
+            orbitCtx.beginPath(); orbitCtx.moveTo(deferentX, deferentY); orbitCtx.lineTo(px, py); orbitCtx.strokeStyle = '#555'; orbitCtx.stroke();
+          } else {
+            let deferentX = drawCoords['sun'].x;
+            let deferentY = drawCoords['sun'].y;
+            orbitCtx.beginPath(); orbitCtx.arc(deferentX, deferentY, p.r, 0, Math.PI*2); orbitCtx.strokeStyle = '#555'; orbitCtx.stroke();
+            orbitCtx.beginPath(); orbitCtx.moveTo(deferentX, deferentY); orbitCtx.lineTo(px, py); orbitCtx.strokeStyle = '#555'; orbitCtx.stroke();
+          }
+        }
+      } else if (currentModel === 'geo_none') {
+        drawCoords['earth'] = { x: cx, y: cy };
+        let ex = coords['earth'].x, ey = coords['earth'].y;
+        drawCoords['sun'] = { x: cx - ex, y: cy + ey };
+        orbitCtx.beginPath(); orbitCtx.arc(cx, cy, planets['earth'].r, 0, Math.PI*2);
+        orbitCtx.strokeStyle = '#444'; orbitCtx.stroke();
+        drawPlanet(drawCoords['sun'].x, drawCoords['sun'].y, 12, '#ffcc00', '太陽');
+
+        for (let key of keys) {
+          if (key === 'earth') continue;
+          let px = cx + coords[key].x;
+          let py = cy - coords[key].y;
+          drawCoords[key] = { x: px, y: py };
+          orbitCtx.beginPath(); orbitCtx.arc(cx, cy, planets[key].r, 0, Math.PI*2);
+          orbitCtx.strokeStyle = '#333'; orbitCtx.stroke();
+        }
+      }
+
+      for (let key of keys) {
+        let p = planets[key];
+        drawPlanet(drawCoords[key].x, drawCoords[key].y, key==='earth'?6:5, p.color, p.name);
+      }
+
+      if (drawCoords['earth'] && drawCoords['mars']) {
+        orbitCtx.beginPath();
+        orbitCtx.moveTo(drawCoords['earth'].x, drawCoords['earth'].y);
+        orbitCtx.lineTo(drawCoords['mars'].x, drawCoords['mars'].y);
+        orbitCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        orbitCtx.setLineDash([4, 4]); orbitCtx.stroke(); orbitCtx.setLineDash([]);
+      }
+
+      let dx, dy, dz;
+      if (currentModel === 'geo_none') {
+        dx = coords['mars'].x;
+        dy = coords['mars'].y;
+        dz = coords['mars'].z;
+      } else {
+        dx = coords['mars'].x - coords['earth'].x;
+        dy = coords['mars'].y - coords['earth'].y;
+        dz = coords['mars'].z - coords['earth'].z;
+      }
+      
+      let dist = Math.sqrt(dx*dx + dy*dy);
+      let lon = Math.atan2(dy, dx);
+      let lat = Math.atan2(dz, dist);
+
+      let unwrapLon = lon;
+      if (skyPath.length === 0) {
+        camX = -unwrapLon * 200 - wSky * 0.5;
+      } else {
+        let prevLon = skyPath[skyPath.length - 1].rawLon;
+        let diff = lon - prevLon;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        unwrapLon = skyPath[skyPath.length - 1].unwrapLon + diff;
+      }
+
+      let skyX = -unwrapLon * 200; 
+      let skyY = hSky/2 - lat * 450; 
+
+      skyPath.push({ x: skyX, y: skyY, rawLon: lon, unwrapLon: unwrapLon });
+      if (skyPath.length > 500) skyPath.shift();
+
+      if (skyX > camX + wSky * 0.8) camX = skyX - wSky * 0.8;
+      if (skyX < camX + wSky * 0.2) camX = skyX - wSky * 0.2;
+
+      if (document.getElementById('skyPanel').style.display !== 'none') {
+        skyCtx.fillStyle = '#0a0a1a';
+        skyCtx.fillRect(0, 0, wSky, hSky);
+
+        skyCtx.beginPath(); skyCtx.moveTo(0, hSky/2); skyCtx.lineTo(wSky, hSky/2);
+        skyCtx.strokeStyle = '#223'; skyCtx.stroke();
+
+        skyCtx.beginPath();
+        skyCtx.strokeStyle = 'rgba(255, 68, 68, 0.8)';
+        skyCtx.lineWidth = 2;
+        for (let i = 0; i < skyPath.length; i++) {
+          let drawX = skyPath[i].x - camX;
+          let drawY = skyPath[i].y;
+          if (i === 0) skyCtx.moveTo(drawX, drawY);
+          else skyCtx.lineTo(drawX, drawY);
+        }
+        skyCtx.stroke();
+
+        let currentDrawX = skyPath[skyPath.length - 1].x - camX;
+        let currentDrawY = skyPath[skyPath.length - 1].y;
+        skyCtx.beginPath(); skyCtx.arc(currentDrawX, currentDrawY, 4, 0, Math.PI*2);
+        skyCtx.fillStyle = '#ff4444'; skyCtx.fill();
+        skyCtx.fillStyle = '#fff';
+        skyCtx.fillText('火星', currentDrawX + 8, currentDrawY - 8);
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    function drawPlanet(x, y, r, color, name) {
+      orbitCtx.beginPath(); orbitCtx.arc(x, y, r, 0, Math.PI*2);
+      orbitCtx.fillStyle = color; orbitCtx.fill();
+      orbitCtx.fillStyle = '#fff';
+      orbitCtx.font = "12px sans-serif";
+      orbitCtx.fillText(name, x + r + 4, y + 4);
+    }
+
+    draw();
+  </script>
+</body>
+</html>
