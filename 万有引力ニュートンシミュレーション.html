@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>慣性と重力のせめぎ合い</title>
+    <style>
+        body { 
+            text-align: center; 
+            font-family: sans-serif; 
+            background-color: #111; 
+            color: #fff; 
+            margin: 0; 
+            padding: 10px; 
+            touch-action: manipulation; 
+        }
+        h2 { font-size: 1.1rem; margin: 10px 0; }
+        
+        canvas { 
+            background-color: #000; 
+            border: 1px solid #555; 
+            border-radius: 5px; 
+            width: 100%; 
+            max-width: 400px; 
+            height: auto; 
+            display: block;
+            margin: 0 auto;
+        }
+
+        .controls { 
+            margin: 10px auto; 
+            max-width: 400px;
+            display: flex; 
+            flex-wrap: wrap; 
+            justify-content: space-between; 
+            gap: 5px; 
+        }
+        button { 
+            padding: 12px 0; 
+            font-size: 14px; 
+            cursor: pointer; 
+            border-radius: 5px; 
+            border: none; 
+            font-weight: bold; 
+            touch-action: manipulation;
+        }
+        .btn-grav { flex: 1 1 48%; background-color: #555; color: white; transition: 0.2s; }
+        .btn-grav.active { background-color: #e74c3c; box-shadow: 0 0 5px #e74c3c; }
+        
+        .bottom-btns { flex: 1 1 100%; display: flex; gap: 5px; margin-top: 5px; }
+        #pauseBtn { flex: 1; background-color: #f39c12; color: white; }
+        #pauseBtn.paused { background-color: #27ae60; }
+        #resetBtn { flex: 1; background-color: #3498db; color: white; }
+
+        .legend { 
+            font-size: 11px; 
+            text-align: left; 
+            max-width: 400px; 
+            margin: 0 auto 10px; 
+            line-height: 1.4; 
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+        .color-box { width: 12px; height: 12px; margin-right: 8px; flex-shrink: 0; }
+        .dashed-line { width: 20px; border-bottom: 2px dashed rgba(255, 255, 255, 0.5); margin-right: 8px; flex-shrink: 0; }
+        .ghost-circle { width: 10px; height: 10px; border: 1.5px dashed rgba(241, 196, 15, 0.6); border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+    </style>
+</head>
+<body>
+    <h2>月はなぜ落ちてこない？</h2>
+    
+    <div class="legend">
+        <div class="legend-item"><div class="color-box" style="background-color: #3498db;"></div>進行方向（慣性）</div>
+        <div class="legend-item"><div class="color-box" style="background-color: #e74c3c;"></div>地球が引く力（重力）</div>
+        <div class="legend-item"><div class="ghost-circle"></div>1倍のままだった場合の「仮想の月」</div>
+        <div class="legend-item"><div class="color-box" style="background-color: #2ecc71;"></div>月が「落ちた」距離（ズレのベクトル）</div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-grav" id="btn0" onclick="setGravity(0, this)">重力 0倍 (0.4秒後停止)</button>
+        <button class="btn-grav active" id="btn1" onclick="setGravity(1.0, this)">重力 1倍 (通常)</button>
+        
+        <div class="bottom-btns">
+            <button id="pauseBtn" onclick="togglePause()">⏸ 一時停止</button>
+            <button id="resetBtn" onclick="init()">最初から</button>
+        </div>
+    </div>
+
+    <canvas id="simCanvas" width="400" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const earthRadius = 25;
+        const moonRadius = 8;
+        const BASE_G_M = 1500; 
+        const ORBIT_RADIUS = 120; 
+
+        let moon = {};
+        let ghostMoon = {}; 
+        let animationId;
+        let path = [];
+        let gravityMultiplier = 1.0;
+        let isPaused = false; 
+        
+        // 0倍ボタンの自動停止用変数
+        let isZeroGravity = false;
+        let framesAfterZero = 0;
+
+        function setGravity(mult, btnElement) {
+            gravityMultiplier = mult;
+            
+            // 重力を変更した瞬間、仮想の月（ゴースト）を現在の位置にセット
+            ghostMoon = { x: moon.x, y: moon.y, vx: moon.vx, vy: moon.vy };
+
+            // 0倍なら自動停止のカウントダウン開始
+            if (mult === 0) {
+                isZeroGravity = true;
+                framesAfterZero = 0;
+            } else {
+                isZeroGravity = false;
+            }
+
+            document.getElementById('btn0').classList.remove('active');
+            document.getElementById('btn1').classList.remove('active');
+            btnElement.classList.add('active');
+
+            // もし一時停止中なら、動かす
+            if (isPaused) {
+                togglePause();
+            }
+        }
+
+        function togglePause() {
+            isPaused = !isPaused;
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (isPaused) {
+                pauseBtn.textContent = '▶ 再開';
+                pauseBtn.classList.add('paused');
+            } else {
+                pauseBtn.textContent = '⏸ 一時停止';
+                pauseBtn.classList.remove('paused');
+                loop(); 
+            }
+        }
+
+        function init() {
+            cancelAnimationFrame(animationId);
+            setGravity(1.0, document.getElementById('btn1'));
+            
+            isPaused = false;
+            isZeroGravity = false;
+            framesAfterZero = 0;
+            
+            const pauseBtn = document.getElementById('pauseBtn');
+            pauseBtn.textContent = '⏸ 一時停止';
+            pauseBtn.classList.remove('paused');
+
+            path = [];
+            moon = {
+                x: cx + ORBIT_RADIUS,
+                y: cy,
+                vx: 0,
+                vy: -Math.sqrt(BASE_G_M / ORBIT_RADIUS)
+            };
+            ghostMoon = { ...moon }; 
+
+            loop();
+        }
+
+        function drawArrow(fromX, fromY, toX, toY, color, width=3) {
+            const headlen = 8; 
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.stroke();
+        }
+
+        function loop() {
+            if (isPaused) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 地球
+            ctx.beginPath();
+            ctx.arc(cx, cy, earthRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e90ff';
+            ctx.fill();
+            
+            // --- 実際の月の計算 ---
+            const dx = cx - moon.x;
+            const dy = cy - moon.y;
+            const distSq = dx*dx + dy*dy;
+            const dist = Math.sqrt(distSq);
+
+            if (dist > 0) {
+                const a = (BASE_G_M * gravityMultiplier) / distSq;
+                moon.vx += a * (dx / dist);
+                moon.vy += a * (dy / dist);
+            }
+            moon.x += moon.vx;
+            moon.y += moon.vy;
+
+            // --- 仮想の月（常に1.0倍の重力）の計算 ---
+            const g_dx = cx - ghostMoon.x;
+            const g_dy = cy - ghostMoon.y;
+            const g_distSq = g_dx*g_dx + g_dy*g_dy;
+            const g_dist = Math.sqrt(g_distSq);
+            
+            if (g_dist > 0) {
+                const g_a = BASE_G_M / g_distSq; // 常に1.0倍
+                ghostMoon.vx += g_a * (g_dx / g_dist);
+                ghostMoon.vy += g_a * (g_dy / g_dist);
+            }
+            ghostMoon.x += ghostMoon.vx;
+            ghostMoon.y += ghostMoon.vy;
+
+
+            // もし重力がなかったら進む「仮想直線」の描画
+            const virtualPathLength = 150;
+            ctx.beginPath();
+            ctx.setLineDash([4, 4]);
+            ctx.moveTo(moon.x, moon.y);
+            const vMag = Math.sqrt(moon.vx*moon.vx + moon.vy*moon.vy);
+            if (vMag > 0) {
+                const normVx = moon.vx / vMag;
+                const normVy = moon.vy / vMag;
+                ctx.lineTo(moon.x + normVx * virtualPathLength, moon.y + normVy * virtualPathLength);
+            }
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.setLineDash([]); 
+
+            // 実際の月の軌跡
+            path.push({x: moon.x, y: moon.y});
+            if (path.length > 400) path.shift();
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            path.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(pt.x, pt.y);
+                else ctx.lineTo(pt.x, pt.y);
+            });
+            ctx.stroke();
+
+            // --- ★1倍以外の時、仮想の月とズレのベクトルを描画 ---
+            if (gravityMultiplier !== 1.0) {
+                // 仮想の月（点線）
+                ctx.beginPath();
+                ctx.arc(ghostMoon.x, ghostMoon.y, moonRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(241, 196, 15, 0.6)';
+                ctx.setLineDash([2, 2]);
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 実際の月から仮想の月へのベクトル（緑）
+                drawArrow(moon.x, moon.y, ghostMoon.x, ghostMoon.y, '#2ecc71', 2);
+            }
+
+            // 実際の月
+            ctx.beginPath();
+            ctx.arc(moon.x, moon.y, moonRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#f1c40f';
+            ctx.fill();
+
+            // 青矢印（速度ベクトル）
+            drawArrow(moon.x, moon.y, moon.x + moon.vx * 15, moon.y + moon.vy * 15, '#3498db', 3);
+
+            // 赤矢印（重力ベクトル）
+            if (gravityMultiplier > 0) {
+                const forceMagnitude = 40 * gravityMultiplier;
+                drawArrow(moon.x, moon.y, moon.x + (dx / dist) * forceMagnitude, moon.y + (dy / dist) * forceMagnitude, '#e74c3c', 3);
+            }
+
+            // 衝突または画面外で停止
+            if (dist < earthRadius + moonRadius || moon.x < -150 || moon.x > canvas.width + 150 || moon.y < -150 || moon.y > canvas.height + 150) {
+                return; 
+            }
+
+            // --- 0倍ボタン時の0.4秒（24フレーム）後自動停止 ---
+            if (isZeroGravity) {
+                framesAfterZero++;
+                if (framesAfterZero === 24) { // 60fps計算で0.4秒に変更
+                    isPaused = true;
+                    const pauseBtn = document.getElementById('pauseBtn');
+                    pauseBtn.textContent = '▶ 再開';
+                    pauseBtn.classList.add('paused');
+                    return; // ここでループを止める
+                }
+            }
+
+            animationId = requestAnimationFrame(loop);
+        }
+
+        init();
+    </script>
+</body>
+</html>
