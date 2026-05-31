@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>慣性力・等速直線運動 統合シミュレーション（スマホ対応版）</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background-color: #f0f8ff;
+            margin: 0;
+            padding: 10px; /* スマホ用に余白を少し調整 */
+        }
+        canvas {
+            background-color: #ffffff;
+            border: 2px solid #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            border-radius: 4px;
+            /* ★ キャンバスを画面幅に合わせて自動縮小 ★ */
+            max-width: 100%;
+            height: auto;
+            touch-action: none; /* スワイプによる誤動作防止 */
+        }
+        .controls {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .control-group {
+            display: flex;
+            gap: 10px;
+            border-right: 2px solid #eee;
+            padding-right: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .control-group:last-child {
+            border-right: none;
+            padding-right: 0;
+        }
+        .vector-controls {
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            background: #f8f9fa;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #d5dbdb;
+        }
+        button, select {
+            font-size: 15px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            font-weight: bold;
+            transition: all 0.2s;
+            box-sizing: border-box;
+        }
+        button:hover {
+            filter: brightness(0.9);
+        }
+        #playPauseBtn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            width: 120px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            min-width: 220px;
+            justify-content: space-between;
+        }
+        .slider-container input[type="range"] {
+            flex-grow: 1;
+        }
+        label.chk-label {
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 15px;
+            padding: 5px 0;
+        }
+        .toggle-btn {
+            font-size: 15px;
+            padding: 10px 16px;
+            border: none;
+            color: white;
+            border-radius: 4px;
+        }
+
+        /* ★ スマホ・タブレット向けのレスポンシブデザイン ★ */
+        @media (max-width: 768px) {
+            .controls, .vector-controls {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 10px;
+                gap: 5px;
+            }
+            .control-group {
+                border-right: none;
+                border-bottom: 2px solid #eee;
+                padding-right: 0;
+                padding-bottom: 10px;
+                margin-bottom: 5px;
+                width: 100%;
+            }
+            .control-group:last-child {
+                border-bottom: none;
+                margin-bottom: 0;
+                padding-bottom: 0;
+            }
+            select, button, .toggle-btn {
+                width: 100%;
+                font-size: 16px;
+                padding: 12px;
+                margin: 2px 0;
+            }
+            #playPauseBtn {
+                width: 100%; /* スマホではフル幅に */
+            }
+            .slider-container {
+                width: 100%;
+                box-sizing: border-box;
+            }
+            #mode1Controls span {
+                display: none; /* スマホ縦並び時は▶矢印を隠す */
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div class="control-group">
+            <select id="motionTypeSelect" style="color: #27ae60;">
+                <option value="constV" selected>運動: 等速直線運動 (a = 0)</option>
+                <option value="accel">運動: 等加速度直線運動 (加速中)</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <select id="modeSelect">
+                <option value="1">1. 概要（図解で見比べる）</option>
+                <option value="2">2. 車外の人の立場（慣性系）</option>
+                <option value="3">3. 車内の人の立場（非慣性系）</option>
+            </select>
+        </div>
+
+        <div class="control-group" id="mode1Controls">
+            <button id="btnBefore" class="toggle-btn" style="background-color: #f39c12; color: #fff;">1. 静止</button>
+            <span style="font-weight: bold; color: #888;">▶</span>
+            <button id="btnAfter" class="toggle-btn" style="background-color: #e74c3c;">2. 移動中</button>
+        </div>
+
+        <div class="control-group" id="animControls" style="display: none;">
+            <button id="playPauseBtn">一時停止</button>
+            <button id="resetBtn">リセット</button>
+        </div>
+        
+        <div class="control-group">
+            <div class="slider-container" id="accelContainer" style="display: none;">
+                加速度 a: <input type="range" id="accelSlider" min="0" max="15" step="1" value="5">
+                <span id="accelValue" style="width:25px; text-align:right;">5</span>
+            </div>
+            <div class="slider-container" id="veloContainer">
+                速度 v: <input type="range" id="veloSlider" min="0" max="40" step="1" value="20">
+                <span id="veloValue" style="width:25px; text-align:right;">20</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="vector-controls" id="vectorControls" style="display: none;">
+        <span style="color:#555; font-weight:bold;">【表示設定】</span>
+        
+        <label class="chk-label" style="color: #7f8c8d;" id="labelGhost">
+            <input type="checkbox" id="chkGhost"> 元の位置(残像)
+        </label>
+        <span style="color:#ccc;" id="sepGhost">|</span>
+        
+        <label class="chk-label" style="color: #2980b9;">
+            <input type="checkbox" id="chkGravity"> 重力(mg)
+        </label>
+        <label class="chk-label" style="color: #c0392b;">
+            <input type="checkbox" id="chkTension"> 張力(S)
+        </label>
+        <label class="chk-label" style="color: #27ae60;" id="labelNetForce">
+            <input type="checkbox" id="chkNetForce"> 合力(F)
+        </label>
+        <label class="chk-label" style="color: #8e44ad;" id="labelInertial">
+            <input type="checkbox" id="chkInertial"> 慣性力
+        </label>
+    </div>
+
+    <canvas id="simCanvas" width="900" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const modeSelect = document.getElementById('modeSelect');
+        const motionTypeSelect = document.getElementById('motionTypeSelect');
+        const accelSlider = document.getElementById('accelSlider');
+        const accelValue = document.getElementById('accelValue');
+        const veloSlider = document.getElementById('veloSlider');
+        const veloValue = document.getElementById('veloValue');
+        
+        const mode1Controls = document.getElementById('mode1Controls');
+        const animControls = document.getElementById('animControls');
+        const accelContainer = document.getElementById('accelContainer');
+        const veloContainer = document.getElementById('veloContainer');
+        const vectorControls = document.getElementById('vectorControls');
+        
+        const btnBefore = document.getElementById('btnBefore');
+        const btnAfter = document.getElementById('btnAfter');
+        
+        const chkGhost = document.getElementById('chkGhost');
+        const labelGhost = document.getElementById('labelGhost');
+        const sepGhost = document.getElementById('sepGhost');
+        const chkGravity = document.getElementById('chkGravity');
+        const chkTension = document.getElementById('chkTension');
+        const chkNetForce = document.getElementById('chkNetForce');
+        const chkInertial = document.getElementById('chkInertial');
+        const labelNetForce = document.getElementById('labelNetForce');
+        const labelInertial = document.getElementById('labelInertial');
+
+        const g = 9.8;         
+        let a_input = parseFloat(accelSlider.value); 
+        let v_input = parseFloat(veloSlider.value);
+        const L = 180; 
+        const vectorScale = 0.8; 
+
+        let isPlaying = false; 
+        let mode = '1';
+        let mode1State = 'before'; 
+        let motionType = 'constV'; 
+        
+        let trainAbsoluteX = 0; 
+        let trainV = 0;      
+        let theta = 0;       
+        let omega = 0;       
+        let lastTime = performance.now();
+        
+        let hasAutoPaused = false;
+        
+        const startPivotX_mode2 = 150; 
+        const startPivotY = 130;
+
+        function updateUI() {
+            if (motionType === 'accel') {
+                btnBefore.textContent = "1. 加速前 (静止)";
+                btnAfter.textContent = "2. 加速した状態";
+                accelContainer.style.display = 'flex';
+                veloContainer.style.display = 'none';
+                motionTypeSelect.style.color = '#d35400'; 
+            } else {
+                btnBefore.textContent = "1. 静止";
+                btnAfter.textContent = "2. 等速で移動中";
+                accelContainer.style.display = 'none';
+                veloContainer.style.display = 'flex';
+                motionTypeSelect.style.color = '#27ae60'; 
+            }
+
+            if (mode === '1') {
+                mode1Controls.style.display = 'flex';
+                animControls.style.display = 'none';
+                vectorControls.style.display = 'none';
+                isPlaying = false; 
+                setMode1State(mode1State);
+            } else {
+                mode1Controls.style.display = 'none';
+                animControls.style.display = 'flex';
+                vectorControls.style.display = 'flex';
+                
+                if (mode === '2') {
+                    labelInertial.style.display = 'none';
+                    chkInertial.checked = false;
+                    labelGhost.style.display = (motionType === 'accel') ? 'flex' : 'none';
+                    sepGhost.style.display = (motionType === 'accel') ? 'inline' : 'none';
+                    labelNetForce.style.display = (motionType === 'accel') ? 'flex' : 'none';
+                } else if (mode === '3') {
+                    labelGhost.style.display = 'none'; 
+                    sepGhost.style.display = 'none';
+                    chkGhost.checked = false;
+                    if (motionType === 'accel') {
+                        labelNetForce.style.display = 'flex';
+                        labelInertial.style.display = 'flex';
+                    } else {
+                        labelNetForce.style.display = 'none';
+                        chkNetForce.checked = false;
+                        labelInertial.style.display = 'none';
+                        chkInertial.checked = false;
+                    }
+                }
+
+                if (!isPlaying && !hasAutoPaused) {
+                    isPlaying = false; 
+                    playPauseBtn.textContent = "▶ 再生";
+                    playPauseBtn.style.backgroundColor = "#e74c3c";
+                    lastTime = performance.now();
+                }
+            }
+        }
+
+        function setMode1State(state) {
+            mode1State = state;
+            trainAbsoluteX = 0; 
+            if (state === 'before') {
+                btnBefore.style.opacity = '1'; btnAfter.style.opacity = '0.5';
+                theta = 0; draw();
+            } else {
+                btnBefore.style.opacity = '0.5'; btnAfter.style.opacity = '1';
+                theta = (motionType === 'accel') ? -Math.atan(a_input / g) : 0; 
+                draw();
+            }
+        }
+
+        btnBefore.addEventListener('click', () => setMode1State('before'));
+        btnAfter.addEventListener('click', () => setMode1State('after'));
+        
+        playPauseBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            playPauseBtn.textContent = isPlaying ? "一時停止" : "▶ 再生";
+            playPauseBtn.style.backgroundColor = isPlaying ? "#3498db" : "#e74c3c";
+            lastTime = performance.now();
+        });
+
+        resetBtn.addEventListener('click', resetSim);
+        modeSelect.addEventListener('change', (e) => { 
+            mode = e.target.value; 
+            trainAbsoluteX = 0;
+            hasAutoPaused = false;
+            updateUI(); 
+            resetSim(); 
+        });
+        motionTypeSelect.addEventListener('change', (e) => { 
+            motionType = e.target.value; 
+            trainAbsoluteX = 0;
+            hasAutoPaused = false;
+            updateUI(); 
+            resetSim(); 
+        });
+
+        accelSlider.addEventListener('input', (e) => {
+            a_input = parseFloat(e.target.value); accelValue.textContent = a_input;
+            if (mode === '1' && mode1State === 'after') { theta = -Math.atan(a_input / g); draw(); }
+        });
+        veloSlider.addEventListener('input', (e) => {
+            v_input = parseFloat(e.target.value); veloValue.textContent = v_input;
+            if (mode === '1' && mode1State === 'after') draw();
+        });
+        
+        const checkboxes = [chkGhost, chkGravity, chkTension, chkNetForce, chkInertial];
+        checkboxes.forEach(chk => {
+            chk.addEventListener('change', () => draw());
+        });
+
+        function resetSim() {
+            trainAbsoluteX = 0;
+            trainV = (motionType === 'accel') ? 0 : v_input;
+            theta = 0; omega = 0; hasAutoPaused = false; 
+            if (mode === '1') {
+                setMode1State('before');
+            } else {
+                isPlaying = false;
+                playPauseBtn.textContent = "▶ 再生"; 
+                playPauseBtn.style.backgroundColor = "#e74c3c";
+            }
+            lastTime = performance.now();
+            draw();
+        }
+
+        function drawArrow(fromX, fromY, dx, dy, color, label, textAlign = "center", offsetX = 0, offsetY = 0) {
+            if (Math.hypot(dx, dy) < 2) return;
+            const toX = fromX + dx; const toY = fromY + dy;
+            const headlen = 10; const angle = Math.atan2(dy, dx);
+            ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(fromX, fromY); ctx.lineTo(toX, toY); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headlen * Math.cos(angle - Math.PI / 6), toY - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(toX - headlen * Math.cos(angle + Math.PI / 6), toY - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.fill();
+            if (label) {
+                ctx.font = "bold 15px sans-serif"; ctx.textAlign = textAlign;
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; ctx.lineWidth = 4; ctx.lineJoin = "round";
+                ctx.strokeText(label, toX + offsetX, toY + offsetY);
+                ctx.fillStyle = color; ctx.fillText(label, toX + offsetX, toY + offsetY);
+                ctx.textAlign = "left"; 
+            }
+        }
+
+        function drawStateArrow(cx, cy, value, type) {
+            if (value < 0.1) return;
+            const len = Math.max(50, value * ((type === 'a') ? 6 : 2)); 
+            const startX = cx - len / 2; const endX = cx + len / 2;
+            const color = (type === 'a') ? "#d35400" : "#27ae60";
+            const text = (type === 'a') ? "加速度 a" : "速度 v (一定)";
+            ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(startX, cy); ctx.lineTo(endX, cy); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(endX, cy); ctx.lineTo(endX - 15, cy - 10); ctx.lineTo(endX - 15, cy + 10); ctx.fill();
+            ctx.font = "bold 18px sans-serif"; ctx.textAlign = "center";
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; ctx.lineWidth = 5; ctx.lineJoin = "round";
+            ctx.strokeText(text, cx, cy - 15); ctx.fillStyle = color; ctx.fillText(text, cx, cy - 15);
+            ctx.textAlign = "left";
+        }
+
+        function drawCloud(x, y, size) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.arc(x + size * 0.5, y - size * 0.3, size * 0.7, 0, Math.PI * 2);
+            ctx.arc(x + size, y, size * 0.8, 0, Math.PI * 2);
+            ctx.arc(x + size * 0.5, y + size * 0.3, size * 0.6, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function loop(timestamp) {
+            const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+            lastTime = timestamp;
+            let currentA = (motionType === 'accel') ? a_input : 0;
+
+            if (mode !== '1') {
+                if (isPlaying) {
+                    if (motionType === 'accel') { trainV += currentA * dt; } else { trainV = v_input; }
+                    trainAbsoluteX += trainV * dt * 20; 
+                    const damping = 3.0;
+                    const alpha = (-g * Math.sin(theta) - currentA * Math.cos(theta)) / (L / 40) - damping * omega;
+                    omega += alpha * dt; theta += omega * dt;
+
+                    if (motionType === 'accel' && (mode === '2' || mode === '3') && !hasAutoPaused && trainAbsoluteX > 50) {
+                        let targetTheta = -Math.atan(currentA / g);
+                        if (Math.abs(theta - targetTheta) < 0.01 && Math.abs(omega) < 0.01) {
+                            isPlaying = false; 
+                            hasAutoPaused = true;
+                            playPauseBtn.textContent = "▶ 再生して進む"; 
+                            playPauseBtn.style.backgroundColor = "#e74c3c";
+                        }
+                    }
+                }
+                draw();
+            }
+            requestAnimationFrame(loop);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let currentA = (motionType === 'accel') ? a_input : 0;
+            let pivotX, pivotY;
+            let cameraX = (mode === '3') ? trainAbsoluteX : 0; 
+
+            if (mode === '1' || mode === '2') {
+                ctx.fillStyle = "#87CEEB"; ctx.fillRect(0, 0, canvas.width, 250);
+                ctx.fillStyle = "#aab7b8"; ctx.fillRect(0, 200, canvas.width, 50);
+                for(let i=0; i<canvas.width; i+=80) { let h = 20 + (i % 50); ctx.fillRect(i, 250 - h, 60, h); }
+
+                ctx.strokeStyle = "#7f8c8d"; ctx.lineWidth = 4;
+                for (let i = 50; i < canvas.width; i += 300) {
+                    ctx.beginPath(); ctx.moveTo(i, 50); ctx.lineTo(i, 350); 
+                    ctx.moveTo(i - 20, 100); ctx.lineTo(i + 150, 100); ctx.stroke();
+                }
+
+                ctx.fillStyle = "#7b7d7d"; ctx.fillRect(0, 350, canvas.width, 50);
+                ctx.strokeStyle = "#515a5a"; ctx.lineWidth = 5;
+                for (let i = 0; i < canvas.width; i += 40) { ctx.beginPath(); ctx.moveTo(i, 360); ctx.lineTo(i - 20, 390); ctx.stroke(); }
+                ctx.strokeStyle = "#d0d3d4"; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(0, 365); ctx.lineTo(canvas.width, 365); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, 385); ctx.lineTo(canvas.width, 385); ctx.stroke();
+
+                let tx = startPivotX_mode2 + trainAbsoluteX;
+                let wrapWidth = 1600; 
+                let xOffset = 350;
+                let trainScreenX;
+                
+                if (mode === '1') {
+                    trainScreenX = canvas.width / 2;
+                } else {
+                    trainScreenX = ((tx + xOffset) % wrapWidth) - xOffset;
+                }
+
+                pivotX = trainScreenX;
+                pivotY = startPivotY; 
+
+                ctx.save();
+                ctx.translate(trainScreenX, 230); 
+
+                ctx.strokeStyle = "#555"; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(-60, -140); ctx.lineTo(-30, -180); ctx.lineTo(0, -140); 
+                ctx.moveTo(-30, -180); ctx.lineTo(40, -180); ctx.stroke();
+                ctx.fillStyle = "#555"; ctx.fillRect(-20, -185, 60, 8);
+
+                ctx.fillStyle = "#ecf0f1"; ctx.beginPath(); ctx.roundRect(-350, -140, 700, 260, 20); ctx.fill();
+                ctx.strokeStyle = "#2c3e50"; ctx.lineWidth = 4; ctx.stroke();
+
+                ctx.fillStyle = "#3498db"; ctx.fillRect(-350, -10, 700, 20);
+
+                ctx.fillStyle = "#2c3e50"; ctx.fillRect(-320, -90, 80, 65); ctx.fillRect(240, -90, 80, 65);
+                ctx.fillStyle = "#bdc3c7"; ctx.strokeStyle = "#7f8c8d"; ctx.lineWidth = 2;
+                ctx.fillRect(-210, -100, 60, 210); ctx.strokeRect(-210, -100, 60, 210);
+                ctx.fillStyle = "#2c3e50"; ctx.fillRect(-202, -70, 18, 70); ctx.fillRect(-176, -70, 18, 70);
+                ctx.fillStyle = "#bdc3c7"; ctx.fillRect(150, -100, 60, 210); ctx.strokeRect(150, -100, 60, 210);
+                ctx.fillStyle = "#2c3e50"; ctx.fillRect(158, -70, 18, 70); ctx.fillRect(184, -70, 18, 70);
+
+                ctx.fillStyle = "#333";
+                ctx.fillRect(-260, 120, 100, 20); ctx.beginPath(); ctx.arc(-240, 140, 20, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(-180, 140, 20, 0, Math.PI*2); ctx.fill();
+                ctx.fillRect(160, 120, 100, 20); ctx.beginPath(); ctx.arc(180, 140, 20, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(240, 140, 20, 0, Math.PI*2); ctx.fill();
+
+                ctx.fillStyle = "#d5d8dc"; ctx.fillRect(-130, -100, 260, 200); 
+                ctx.fillStyle = "#a6acaf"; ctx.fillRect(-130, 100, 260, 20); 
+                ctx.strokeStyle = "#95a5a6"; ctx.lineWidth = 5; ctx.strokeRect(-130, -100, 260, 220); 
+
+                if (mode === '1') {
+                    ctx.save();
+                    ctx.translate(60, 100); 
+                    if (mode1State === 'after' && motionType === 'accel') { ctx.rotate(theta); }
+                    ctx.fillStyle = "#e74c3c"; ctx.fillRect(-12, -90, 24, 90);
+                    ctx.beginPath(); ctx.arc(0, -110, 16, 0, Math.PI * 2); ctx.fill();
+                    ctx.restore();
+                }
+
+                if (mode === '1' && mode1State === 'after') {
+                    if (motionType === 'accel') drawStateArrow(0, -190, currentA, 'a');
+                    else drawStateArrow(0, -190, v_input, 'v');
+                } else if (mode === '2') {
+                    if (motionType === 'accel') drawStateArrow(0, -190, currentA, 'a');
+                    else drawStateArrow(0, -190, v_input, 'v');
+                }
+                ctx.restore();
+
+                ctx.fillStyle = "#bdc3c7"; ctx.fillRect(0, 420, canvas.width, 80); 
+                ctx.fillStyle = "#95a5a6"; ctx.fillRect(0, 410, canvas.width, 10); 
+                ctx.fillStyle = "#f1c40f"; for(let i=0; i<canvas.width; i+=50) { ctx.fillRect(i, 440, 40, 15); }
+
+                if (mode === '1') {
+                    let obsX = 60; 
+                    ctx.fillStyle = "#333333"; ctx.fillRect(obsX, 330, 25, 80); 
+                    ctx.beginPath(); ctx.arc(obsX + 12.5, 310, 18, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; ctx.lineWidth = 4; ctx.font = "bold 14px sans-serif";
+                    ctx.strokeText("ホームの人", obsX - 25, 280); ctx.fillStyle = "#222"; ctx.fillText("ホームの人", obsX - 25, 280);
+                }
+
+                let showGhost = chkGhost && chkGhost.checked && mode === '2' && trainAbsoluteX > 0 && trainAbsoluteX < 800 && motionType === 'accel';
+                if (showGhost) {
+                    ctx.save();
+                    ctx.strokeStyle = "rgba(149, 165, 166, 0.7)"; ctx.lineWidth = 3; ctx.setLineDash([8, 6]);
+                    ctx.beginPath(); ctx.moveTo(startPivotX_mode2, startPivotY); ctx.lineTo(startPivotX_mode2, startPivotY + L); ctx.stroke();
+                    ctx.fillStyle = "rgba(200, 200, 200, 0.7)";
+                    ctx.beginPath(); ctx.arc(startPivotX_mode2, startPivotY + L, 20, 0, Math.PI * 2); ctx.fill(); 
+                    ctx.setLineDash([]);
+                    
+                    ctx.font = "bold 16px sans-serif"; ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; ctx.lineWidth = 4;
+                    ctx.strokeText("◀ 加速前の小球の位置", startPivotX_mode2 + 25, startPivotY + L + 5);
+                    ctx.fillStyle = "#e74c3c"; ctx.fillText("◀ 加速前の小球の位置", startPivotX_mode2 + 25, startPivotY + L + 5);
+                    ctx.restore();
+                }
+
+            } else if (mode === '3') {
+                pivotX = canvas.width / 2; pivotY = 70; 
+                
+                ctx.fillStyle = "#87CEEB"; ctx.fillRect(0, 0, canvas.width, 350);
+                const cloudSpacing = 400; const cloudOffset = (cameraX * 0.2) % cloudSpacing;
+                for (let i = -1; i <= canvas.width / cloudSpacing + 1; i++) {
+                    let baseX = i * cloudSpacing - cloudOffset;
+                    drawCloud(baseX + 100, 70, 25); drawCloud(baseX + 280, 110, 18); drawCloud(baseX + 50, 160, 30);
+                }
+                ctx.fillStyle = "#bbbbbb"; ctx.fillRect(0, 350, canvas.width, 150); 
+                const tileSpacing = 150; const tileOffset = cameraX % tileSpacing;
+                ctx.strokeStyle = "#a0a0a0"; ctx.lineWidth = 3;
+                for (let i = -1; i <= canvas.width / tileSpacing + 1; i++) {
+                    let lineX = i * tileSpacing - tileOffset;
+                    ctx.beginPath(); ctx.moveTo(lineX, 350); ctx.lineTo(lineX - 50, 500); ctx.stroke();
+                }
+
+                ctx.fillStyle = "#ecf0f1"; 
+                ctx.fillRect(0, 0, canvas.width, 100); ctx.fillRect(0, 280, canvas.width, 120);
+                ctx.fillRect(0, 100, 40, 180); ctx.fillRect(320, 100, 50, 180); ctx.fillRect(530, 100, 50, 180); ctx.fillRect(860, 100, 40, 180);
+                
+                ctx.fillStyle = "#bdc3c7"; ctx.fillRect(370, 80, 160, 20); ctx.fillRect(370, 250, 160, 150);
+                ctx.fillRect(370, 100, 15, 150); ctx.fillRect(515, 100, 15, 150); ctx.fillRect(445, 100, 10, 150); 
+                ctx.fillStyle = "#333"; ctx.fillRect(449, 80, 2, 320);
+
+                ctx.fillStyle = "#2980b9"; ctx.fillRect(0, 310, 320, 90); ctx.fillStyle = "#1f618d"; ctx.fillRect(0, 310, 320, 15); ctx.fillRect(0, 380, 320, 20);
+                ctx.fillStyle = "#2980b9"; ctx.fillRect(580, 310, 320, 90); ctx.fillStyle = "#1f618d"; ctx.fillRect(580, 310, 320, 15); ctx.fillRect(580, 380, 320, 20);
+
+                ctx.fillStyle = "#a6acaf"; ctx.fillRect(0, 400, canvas.width, 100);
+                ctx.strokeStyle = "#909497"; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(0, 420); ctx.lineTo(canvas.width, 420); ctx.moveTo(0, 450); ctx.lineTo(canvas.width, 450); ctx.stroke();
+
+                ctx.strokeStyle = "#7f8c8d"; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(0, 110); ctx.lineTo(320, 110); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(580, 110); ctx.lineTo(900, 110); ctx.stroke();
+
+                ctx.fillStyle = "#e0e0e0"; ctx.fillRect(0, 0, canvas.width, 60);
+                ctx.fillStyle = "#cccccc"; ctx.fillRect(100, 15, 700, 20);
+                ctx.fillStyle = "#999999"; for(let i=110; i<790; i+=20) { ctx.fillRect(i, 18, 5, 14); }
+
+                ctx.strokeStyle = "#bdc3c7"; ctx.lineWidth = 6;
+                ctx.beginPath(); ctx.moveTo(0, 70); ctx.lineTo(canvas.width, 70); ctx.stroke();
+                const strapL = 45; const strapPositions = [100, 200, 300, 600, 700, 800]; 
+                ctx.lineWidth = 4;
+                for(let sx of strapPositions) {
+                    let ringX = sx + strapL * Math.sin(theta); let ringY = 70 + strapL * Math.cos(theta);
+                    ctx.strokeStyle = "#7f8c8d"; ctx.beginPath(); ctx.moveTo(sx, 70); ctx.lineTo(ringX, ringY); ctx.stroke();
+                    ctx.strokeStyle = "#ffffff"; ctx.beginPath(); ctx.arc(ringX, ringY + 12, 12, 0, Math.PI*2); ctx.stroke();
+                    ctx.strokeStyle = "#95a5a6"; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 4; 
+                }
+
+                drawStateArrow(canvas.width / 2, 40, currentA ? currentA : v_input, currentA ? 'a' : 'v');
+            }
+
+            // ================= 小球とベクトルの描画 =================
+            const ballX = pivotX + L * Math.sin(theta);
+            const ballY = pivotY + L * Math.cos(theta);
+
+            ctx.strokeStyle = "#222"; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(pivotX, pivotY); ctx.lineTo(ballX, ballY); ctx.stroke();
+            ctx.fillStyle = "#f39c12"; ctx.beginPath(); ctx.arc(ballX, ballY, 20, 0, Math.PI * 2); ctx.fill();
+            ctx.lineWidth = 2; ctx.strokeStyle = "#222"; ctx.stroke();
+
+            if (mode !== '1') {
+                const m = 10;
+                const W_mag = m * g * vectorScale; 
+                const T_mag = m * Math.sqrt(g*g + currentA*currentA) * vectorScale; 
+                const W_dx = 0; const W_dy = W_mag;
+                const T_dx = -T_mag * Math.sin(theta); const T_dy = -T_mag * Math.cos(theta);
+                const Net_dx = T_dx + W_dx; const Net_dy = T_dy + W_dy;
+                const I_dx = -m * currentA * vectorScale; const I_dy = 0;
+
+                if (mode === '2') {
+                    if (chkGravity && chkGravity.checked) drawArrow(ballX, ballY, W_dx, W_dy, "#2980b9", "重力(mg)", "left", 15, 10);
+                    if (chkTension && chkTension.checked) drawArrow(ballX, ballY, T_dx, T_dy, "#c0392b", "張力(S)", "right", -15, -10);
+                    if (motionType === 'accel' && chkNetForce && chkNetForce.checked) drawArrow(ballX, ballY, Net_dx, Net_dy, "#27ae60", "合力(F)", "left", 15, 0);
+                } else if (mode === '3') {
+                    if (chkGravity && chkGravity.checked) drawArrow(ballX, ballY, W_dx, W_dy, "#2980b9", "重力(mg)", "left", 15, 10);
+                    if (chkTension && chkTension.checked) drawArrow(ballX, ballY, T_dx, T_dy, "#c0392b", "張力(S)", "right", -15, -10);
+                    
+                    if (motionType === 'accel') {
+                        if (chkNetForce && chkNetForce.checked) drawArrow(ballX, ballY, Net_dx, Net_dy, "#27ae60", "合力(F)", "left", 15, 0);
+                        if (chkInertial && chkInertial.checked) drawArrow(ballX, ballY, I_dx, I_dy, "#8e44ad", "慣性力(-ma)", "right", -15, 0); 
+                    } else {
+                        // 等速時の文字も完全に削除
+                    }
+                }
+            }
+        }
+
+        updateUI();
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
